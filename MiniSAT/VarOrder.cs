@@ -59,9 +59,9 @@ namespace MiniSAT
         public virtual Lit select(double random_var_freq)
         {
             // Random decision:
-            if (Utils.Utils.drand(ref this.random_seed) < random_var_freq && !this.heap.Empty())
+            if (Common.drand(ref this.random_seed) < random_var_freq && !this.heap.Empty())
             {
-                Var next = Utils.Utils.irand(ref this.random_seed, this.assigns.Size());
+                Var next = Common.irand(ref this.random_seed, this.assigns.Size());
                 if (LiftedBool.IsUndef(this.assigns[next]))
                 {
 
@@ -82,7 +82,7 @@ namespace MiniSAT
 
             }
 
-            return lit_Undef;
+            return Lit.lit_Undef;
         }
     }
 }

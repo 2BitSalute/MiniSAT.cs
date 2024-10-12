@@ -3,7 +3,7 @@ namespace MiniSAT.Utils
     using System;
     using System.Diagnostics;
 
-    public class Utils
+    public class Common
     {
         [Conditional("DEBUG")]
         static public void Assert(bool expr)

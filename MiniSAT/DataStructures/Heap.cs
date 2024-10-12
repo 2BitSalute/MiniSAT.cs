@@ -70,22 +70,22 @@ namespace MiniSAT.DataStructures
 
         public void SetBounds(int size)
         {
-            Utils.Assert(size >= 0);
+            Common.Assert(size >= 0);
 
             this.indices.GrowTo(size, 0);
         }
 
         public bool InHeap(int n)
         {
-            Utils.Assert(this.Ok(n));
+            Common.Assert(this.Ok(n));
 
             return this.indices[n] != 0;
         }
 
         public void Increase(int n)
         {
-            Utils.Assert(this.Ok(n));
-            Utils.Assert(this.InHeap(n));
+            Common.Assert(this.Ok(n));
+            Common.Assert(this.InHeap(n));
             this.PercolateUp(this.indices[n]);
         }
 
@@ -93,7 +93,7 @@ namespace MiniSAT.DataStructures
 
         public void Insert(int n)
         {
-            Utils.Assert(this.Ok(n));
+            Common.Assert(this.Ok(n));
             this.indices[n] = this.heap.Size();
             this.heap.Push(n);
             this.PercolateUp(this.indices[n]);

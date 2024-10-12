@@ -1,18 +1,17 @@
 using System;
 using System.IO;
 using System.Text;
-using System.Diagnostics;
-using System.Collections.Generic;
 
-using MiniSatCS;
 using MiniSAT.DataStructures;
+using MiniSAT;
 
-internal class Program
+
+public class Program
 {
     private static string ReadWord(StreamReader s)
     {
         StringBuilder sb = new();
-        for (; ; )
+        while (true)
         {
             int ch = s.Read();
             if (ch == -1)
@@ -94,7 +93,7 @@ internal class Program
         for (; pos < args.Length; pos++)
         {
             StreamReader sr = File.OpenText(args[pos]);
-            Vec<Solver.Lit> lits = new();
+            Vec<Lit> lits = new();
 
             Solver S = new();
 
@@ -123,7 +122,7 @@ internal class Program
                     }
 
 
-                    lits.Push((parsed_lit > 0) ? new Solver.Lit(var) : ~new Solver.Lit(var));
+                    lits.Push((parsed_lit > 0) ? new Lit(var) : ~new Lit(var));
                 }
                 if (w == null)
                 {
@@ -155,8 +154,6 @@ internal class Program
                 Solver.reportf(S.okay() ? "SATISFIABLE\n" : "UNSATISFIABLE\n");
                 S.printStats();
             }
-
-
 
 #if false
             if (S.okay())

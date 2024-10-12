@@ -61,8 +61,8 @@ namespace MiniSAT.DataStructures
 
         public void Shrink(int nelems)
         {
-            Utils.Assert(nelems <= this.size);
-            Utils.Assert(nelems >= 0);
+            Common.Assert(nelems <= this.size);
+            Common.Assert(nelems >= 0);
             this.size -= nelems;
         }
         public void ShrinkTo(int nelems)
@@ -72,7 +72,7 @@ namespace MiniSAT.DataStructures
 
         public void Pop()
         {
-            Utils.Assert(this.size > 0);
+            Common.Assert(this.size > 0);
             this.size--;
         }
 
@@ -119,13 +119,13 @@ namespace MiniSAT.DataStructures
         {
             get
             {
-                Utils.Assert(index < this.size);
+                Common.Assert(index < this.size);
                 return this.data[index];
             }
 
             set
             {
-                Utils.Assert(index < this.size);
+                Common.Assert(index < this.size);
                 this.data[index] = value;
             }
         }
@@ -164,7 +164,7 @@ namespace MiniSAT.DataStructures
 
         public void Swap(int i, int j)
         {
-            Utils.Assert(i < this.size && j < this.size);
+            Common.Assert(i < this.size && j < this.size);
 
             (this.data[j], this.data[i]) = (this.data[i], this.data[j]);
         }

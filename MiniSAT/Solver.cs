@@ -22,9 +22,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 
 namespace MiniSAT
 {
-
     using System;
-    using System.IO;
     using System.Text;
     using System.Diagnostics;
     using System.Collections.Generic;
@@ -32,82 +30,13 @@ namespace MiniSAT
     // NOTE! Variables are just integers. No abstraction here. They should be chosen from 0..N,
     // so that they can be used as array indices.
     using Var = System.Int32;
+
     using MiniSAT.DataStructures;
     using MiniSAT.Utils;
 
+
     public class Solver
     {
-        #region Literals
-        //=================================================================================================
-        // Variables, literals, clause IDs:
-
-        private const int var_Undef = -1;
-
-        public struct Lit
-        {
-            public int x;
-
-            //TODO we cannot do that, is that a problem?
-            //public Lit() : x(2*var_Undef) {}   // (lit_Undef)
-            public Lit(Var var, bool sign)
-            {
-                this.x = var + var + (sign ? 1 : 0);
-            }
-
-            public Lit(Var var)
-            {
-                this.x = var + var;
-            }
-
-            public static Lit operator ~(Lit p) { Lit q; q.x = p.x ^ 1; return q; }
-            public static bool operator ==(Lit p, Lit q) { return index(p) == index(q); }
-            public static bool operator !=(Lit p, Lit q) { return index(p) != index(q); }
-            public static bool operator <(Lit p, Lit q) => index(p) < index(q); // `<` guarantees that p, ~p are adjacent in the ordering
-            public static bool operator >(Lit p, Lit q) => index(p) > index(q); // Required to be implemented since `<` is defined
-
-            // public static Fraction operator +(Fraction a) => a;
-
-            public override string ToString()
-            {
-                return (sign(this) ? "-" : "") + "x" + var(this);
-            }
-
-            public override int GetHashCode()
-            {
-                return this.x;
-            }
-
-            public override bool Equals(object other)
-            {
-                if (other == null)
-                {
-                    return false;
-                }
-
-
-                if (other is Lit)
-                {
-
-                    return (Lit)other == this;
-                }
-
-
-                return false;
-            }
-        }
-
-
-        static public bool sign(Lit p) { return (p.x & 1) != 0; }
-        static public int var(Lit p) { return p.x >> 1; }
-        static public int index(Lit p) { return p.x; }                // A "toInt" method that guarantees small, positive integers suitable for array indexing.
-                                                                      //static  Lit  toLit (int i) { Lit p = new Lit(); p.x = i; return p; }  // Inverse of 'index()'.
-                                                                      //static  Lit  unsign(Lit p) { Lit q = new Lit(); q.x = p.x & ~1; return q; }
-                                                                      //static  Lit  id    (Lit p, bool sgn) { Lit q; q.x = p.x ^ (sgn ? 1 : 0); return q; }
-
-        static public Lit lit_Undef = new(var_Undef, false);  // \- Useful special constants.
-                                                              //static Lit lit_Error = new Lit(var_Undef, true );  // /
-        #endregion
-
         #region Clauses
         //=================================================================================================
         // Clause -- a simple class for representing a clause:
@@ -264,13 +193,13 @@ namespace MiniSAT
             }
 
 
-            if ((this.activity[var(p)] += this.var_inc) > 1e100)
+            if ((this.activity[p.Var] += this.var_inc) > 1e100)
             {
                 this.varRescaleActivity();
             }
 
 
-            this.order.update(var(p));
+            this.order.update(p.Var);
         }
 
         private void varDecayActivity()
@@ -295,7 +224,7 @@ namespace MiniSAT
             }
         }
         protected void remove(Clause c) { this.remove(c, false); }
-        protected bool locked(Clause c) { return c == this.reason[var(c[0])]; }
+        protected bool locked(Clause c) { return c == this.reason[c[0].Var]; }
 
         private int decisionLevel() { return this.trail_lim.Size(); }
         #endregion
@@ -341,14 +270,13 @@ namespace MiniSAT
             this.verbosity = 0;
             this.progress_estimate = 0;
 
-            Vec<Lit> dummy = new(2, lit_Undef);
+            Vec<Lit> dummy = new(2, Lit.lit_Undef);
             dummy.Pop();
-
         }
 
         protected virtual VarOrder createOrder()
         {
-            return new VarOrder(this.assigns, this.activity, this.);
+            return new VarOrder(this.assigns, this.activity);
         }
 
         ~Solver()
@@ -370,7 +298,7 @@ namespace MiniSAT
         // Helpers: (semi-internal)
         //
         public LiftedBool.Value value(Var x) { return this.assigns[x]; }
-        public LiftedBool.Value value(Lit p) { return sign(p) ? ~this.assigns[var(p)] : this.assigns[var(p)]; }
+        public LiftedBool.Value value(Lit p) { return p.Sign ? ~this.assigns[p.Var] : this.assigns[p.Var]; }
 
         public int nAssigns() { return this.trail.Size(); }
         public int nClauses() { return this.clauses.Size(); }   // (minor difference from MiniSat without the GClause trick: learnt binary clauses will be counted as original clauses)
@@ -446,7 +374,7 @@ namespace MiniSAT
             {
                 Lit l = qs[i];
                 Lit other;
-                Var v = var(l);
+                Var v = l.Var;
                 if (dict.TryGetValue(v, out other))
                 {
                     if (other == l) { } // already seen it
@@ -475,7 +403,7 @@ namespace MiniSAT
             int max2_at = -1;
             for (int i = 0; i < ps.Size(); ++i)
             {
-                int lev = this.level[var(ps[i])];
+                int lev = this.level[ps[i].Var];
                 if (lev == -1)
                 {
                     lev = int.MaxValue;
@@ -540,11 +468,11 @@ namespace MiniSAT
 
             Vec<Lit> ps;
 
-            Utils.Assert(!(learnt && theoryClause));
+            Common.Assert(!(learnt && theoryClause));
 
             if (!learnt)
             {
-                Utils.Assert(theoryClause || this.decisionLevel() == 0);
+                Common.Assert(theoryClause || this.decisionLevel() == 0);
 
                 Vec<Lit> qs = this.BasicClauseSimplification(ps_, copy);
 
@@ -556,7 +484,7 @@ namespace MiniSAT
                 // Check if clause is satisfied:
                 for (int i = 0; i < qs.Size(); i++)
                 {
-                    if (this.level[var(qs[i])] == 0 && this.value(qs[i]) == LiftedBool.Value.True)
+                    if (this.level[qs[i].Var] == 0 && this.value(qs[i]) == LiftedBool.Value.True)
                     {
                         return;
                     }
@@ -569,7 +497,7 @@ namespace MiniSAT
                     for (i = j = 0; i < qs.Size(); i++)
                     {
 
-                        if (this.level[var(qs[i])] != 0 || this.value(qs[i]) != LiftedBool.Value.False)
+                        if (this.level[qs[i].Var] != 0 || this.value(qs[i]) != LiftedBool.Value.False)
                         {
                             qs[j++] = qs[i];
                         }
@@ -636,13 +564,13 @@ namespace MiniSAT
                     {
                         // Put the second watch on the literal with highest decision level:
                         int max_i = 1;
-                        int max = this.level[var(ps[1])];
+                        int max = this.level[ps[1].Var];
                         for (int i = 2; i < ps.Size(); i++)
                         {
 
-                            if (this.level[var(ps[i])] > max)
+                            if (this.level[ps[i].Var] > max)
                             {
-                                max = this.level[var(ps[i])];
+                                max = this.level[ps[i].Var];
                                 max_i = i;
                             }
                         }
@@ -651,7 +579,7 @@ namespace MiniSAT
                         c[1] = ps[max_i];
                         c[max_i] = ps[1];
 
-                        Utils.Check(this.enqueue(c[0], c));
+                        Common.Check(this.enqueue(c[0], c));
                     }
                     else
                     {
@@ -666,8 +594,8 @@ namespace MiniSAT
 
 
                 // Watch clause:
-                this.watches[index(~c[0])].Push(c);
-                this.watches[index(~c[1])].Push(c);
+                this.watches[(~c[0]).Index].Push(c);
+                this.watches[(~c[1]).Index].Push(c);
                 this.NewClauseCallback(c);
             }
         }
@@ -679,8 +607,8 @@ namespace MiniSAT
         {
             if (!just_dealloc)
             {
-                removeWatch(this.watches[index(~c[0])], c);
-                removeWatch(this.watches[index(~c[1])], c);
+                removeWatch(this.watches[(~c[0]).Index], c);
+                removeWatch(this.watches[(~c[1]).Index], c);
             }
 
             if (c.learnt())
@@ -703,7 +631,7 @@ namespace MiniSAT
         //
         private bool simplify(Clause c)
         {
-            Utils.Assert(this.decisionLevel() == 0);
+            Common.Assert(this.decisionLevel() == 0);
             for (int i = 0; i < c.size(); i++)
             {
                 if (this.value(c[i]) == LiftedBool.Value.True)
@@ -729,7 +657,7 @@ namespace MiniSAT
             int j = 0;
             for (; ws[j] != elem; j++)
             {
-                Utils.Assert(j < ws.Size() - 1);
+                Common.Assert(j < ws.Size() - 1);
             }
 
 
@@ -778,7 +706,7 @@ namespace MiniSAT
             {
                 for (int c = this.trail.Size() - 1; c >= this.trail_lim[level]; c--)
                 {
-                    Var x = var(this.trail[c]);
+                    Var x = this.trail[c].Var;
                     this.assigns[x] = LiftedBool.Value.Undef0;
                     this.reason[x] = null;
                     this.order.undo(x);
@@ -812,7 +740,7 @@ namespace MiniSAT
         {
             Vec<LiftedBool.Value> seen = this.analyze_seen;
             int pathC = 0;
-            Lit p = lit_Undef;
+            Lit p = Lit.lit_Undef;
 
             this.AdditionalConflictAnalisis(confl.GetData(), confl);
 
@@ -825,14 +753,14 @@ namespace MiniSAT
             do
             {
                 /*
-                    debug("    loop analyze {0} {1} {2}\n", confl, p, p==lit_Undef ? -1 : level[var(p)]);
+                    debug("    loop analyze {0} {1} {2}\n", confl, p, p==Lit.lit_Undef ? -1 : level[p.Var]);
                     if (confl == null)
                     {
                       for (int i = trail.size()-1; i >= 0; i--)
                         debug("   {0} {1} {2} {3}\n", trail[i], seen[var(trail[i])], 
                                 level[var(trail[i])], reason[var(trail[i])]);
                     } */
-                Utils.Assert(confl != null);          // (otherwise should be UIP)
+                Common.Assert(confl != null);          // (otherwise should be UIP)
 
                 Clause c = confl;
 
@@ -842,14 +770,14 @@ namespace MiniSAT
                 }
 
 
-                for (int j = (p == lit_Undef) ? 0 : 1; j < c.size(); j++)
+                for (int j = (p == Lit.lit_Undef) ? 0 : 1; j < c.size(); j++)
                 {
                     Lit q = c[j];
-                    if (seen[var(q)] == 0 && this.level[var(q)] > 0)
+                    if (seen[q.Var] == 0 && this.level[q.Var] > 0)
                     {
                         this.varBumpActivity(q);
-                        seen[var(q)] = LiftedBool.Value.True;
-                        if (this.level[var(q)] == this.decisionLevel())
+                        seen[q.Var] = LiftedBool.Value.True;
+                        if (this.level[q.Var] == this.decisionLevel())
                         {
                             pathC++;
                         }
@@ -857,21 +785,21 @@ namespace MiniSAT
                         else
                         {
                             out_learnt.Push(q);
-                            out_btlevel = Math.Max(out_btlevel, this.level[var(q)]);
+                            out_btlevel = Math.Max(out_btlevel, this.level[q.Var]);
                         }
                     }
                 }
 
                 // Select next clause to look at:
-                while (seen[var(this.trail[index--])] == 0)
+                while (seen[this.trail[index--].Var] == 0)
                 {
                     ;
                 }
 
 
                 p = this.trail[index + 1];
-                confl = this.reason[var(p)];
-                seen[var(p)] = 0;
+                confl = this.reason[p.Var];
+                seen[p.Var] = 0;
                 pathC--;
 
             } while (pathC > 0);
@@ -887,13 +815,13 @@ namespace MiniSAT
                     uint min_level = 0;
                     for (i = 1; i < out_learnt.Size(); i++)
                     {
-                        min_level |= (uint)(1 << (this.level[var(out_learnt[i])] & 31));         // (maintain an abstraction of levels involved in conflict)
+                        min_level |= (uint)(1 << (this.level[out_learnt[i].Var] & 31));         // (maintain an abstraction of levels involved in conflict)
                     }
 
                     this.analyze_toclear.Clear();
                     for (i = j = 1; i < out_learnt.Size(); i++)
                     {
-                        if (this.reason[var(out_learnt[i])] == null || !this.analyze_removable(out_learnt[i], min_level))
+                        if (this.reason[out_learnt[i].Var] == null || !this.analyze_removable(out_learnt[i], min_level))
                         {
                             out_learnt[j++] = out_learnt[i];
                         }
@@ -907,7 +835,7 @@ namespace MiniSAT
                     this.analyze_toclear.Clear();
                     for (i = j = 1; i < out_learnt.Size(); i++)
                     {
-                        Clause r = this.reason[var(out_learnt[i])];
+                        Clause r = this.reason[out_learnt[i].Var];
                         if (r == null)
                         {
                             out_learnt[j++] = out_learnt[i];
@@ -919,7 +847,7 @@ namespace MiniSAT
                             for (int k = 1; k < c.size(); k++)
                             {
 
-                                if (seen[var(c[k])] == 0 && this.level[var(c[k])] != 0)
+                                if (seen[c[k].Var] == 0 && this.level[c[k].Var] != 0)
                                 {
                                     out_learnt[j++] = out_learnt[i];
                                     goto Keep;
@@ -940,13 +868,13 @@ namespace MiniSAT
                     int jj;
                     for (jj = 0; jj < out_learnt.Size(); jj++)
                     {
-                        seen[var(out_learnt[jj])] = 0;
+                        seen[out_learnt[jj].Var] = 0;
                     }
 
 
                     for (jj = 0; jj < this.analyze_toclear.Size(); jj++)
                     {
-                        seen[var(this.analyze_toclear[jj])] = 0;    // ('seen[]' is now cleared)
+                        seen[this.analyze_toclear[jj].Var] = 0;    // ('seen[]' is now cleared)
                     }
 
                 }
@@ -964,22 +892,22 @@ namespace MiniSAT
         //
         private bool analyze_removable(Lit p_, uint min_level)
         {
-            Utils.Assert(this.reason[var(p_)] != null);
+            Common.Assert(this.reason[p_.Var] != null);
             this.analyze_stack.Clear(); this.analyze_stack.Push(p_);
             int top = this.analyze_toclear.Size();
             while (this.analyze_stack.Size() > 0)
             {
-                Utils.Assert(this.reason[var(this.analyze_stack.Last())] != null);
-                Clause c = this.reason[var(this.analyze_stack.Last())];
+                Common.Assert(this.reason[this.analyze_stack.Last().Var] != null);
+                Clause c = this.reason[this.analyze_stack.Last().Var];
                 this.analyze_stack.Pop();
                 for (int i = 1; i < c.size(); i++)
                 {
                     Lit p = c[i];
-                    if (this.analyze_seen[var(p)] == 0 && this.level[var(p)] != 0)
+                    if (this.analyze_seen[p.Var] == 0 && this.level[p.Var] != 0)
                     {
-                        if (this.reason[var(p)] != null && ((1 << (this.level[var(p)] & 31)) & min_level) != 0)
+                        if (this.reason[p.Var] != null && ((1 << (this.level[p.Var] & 31)) & min_level) != 0)
                         {
-                            this.analyze_seen[var(p)] = LiftedBool.Value.True;
+                            this.analyze_seen[p.Var] = LiftedBool.Value.True;
                             this.analyze_stack.Push(p);
                             this.analyze_toclear.Push(p);
                         }
@@ -987,7 +915,7 @@ namespace MiniSAT
                         {
                             for (int j = top; j < this.analyze_toclear.Size(); j++)
                             {
-                                this.analyze_seen[var(this.analyze_toclear[j])] = 0;
+                                this.analyze_seen[this.analyze_toclear[j].Var] = 0;
                             }
 
 
@@ -1027,7 +955,7 @@ namespace MiniSAT
             Vec<LiftedBool.Value> seen = this.analyze_seen;
             for (int i = skip_first ? 1 : 0; i < confl.size(); i++)
             {
-                Var x = var(confl[i]);
+                Var x = confl[i].Var;
                 if (this.level[x] > 0)
                 {
                     seen[x] = LiftedBool.Value.True;
@@ -1037,13 +965,13 @@ namespace MiniSAT
             int start = (this.root_level >= this.trail_lim.Size()) ? this.trail.Size() - 1 : this.trail_lim[this.root_level];
             for (int i = start; i >= this.trail_lim[0]; i--)
             {
-                Var x = var(this.trail[i]);
+                Var x = this.trail[i].Var;
                 if (seen[x] != 0)
                 {
                     Clause r = this.reason[x];
                     if (r == null)
                     {
-                        Utils.Assert(this.level[x] > 0);
+                        Common.Assert(this.level[x] > 0);
                         this.conflict.Push(~this.trail[i]);
                     }
                     else
@@ -1051,9 +979,9 @@ namespace MiniSAT
                         Clause c = r;
                         for (int j = 1; j < c.size(); j++)
                         {
-                            if (this.level[var(c[j])] > 0)
+                            if (this.level[c[j].Var] > 0)
                             {
-                                seen[var(c[j])] = LiftedBool.Value.True;
+                                seen[c[j].Var] = LiftedBool.Value.True;
                             }
                         }
 
@@ -1088,8 +1016,8 @@ namespace MiniSAT
             }
             else
             {
-                Var x = var(p);
-                this.assigns[x] = LiftedBool.From(!sign(p));
+                Var x = p.Var;
+                this.assigns[x] = LiftedBool.From(!p.Sign);
                 this.level[x] = this.decisionLevel();
                 this.trail_pos[x] = this.trail.Size();
                 this.reason[x] = from;
@@ -1119,7 +1047,7 @@ namespace MiniSAT
                 this.simpDB_props--;
 
                 Lit p = this.trail[this.qhead++];     // 'p' is enqueued fact to propagate.
-                Vec<Clause> ws = this.watches[index(p)];
+                Vec<Clause> ws = this.watches[p.Index];
                 //GClause*       i,* j, *end;
                 int i, j, end;
 
@@ -1131,7 +1059,7 @@ namespace MiniSAT
                     if (c[0] == false_lit)
                     { c[0] = c[1]; c[1] = false_lit; }
 
-                    Utils.Assert(c[1] == false_lit);
+                    Common.Assert(c[1] == false_lit);
 
                     // If 0th watch is true, then clause is already satisfied.
                     Lit first = c[0];
@@ -1149,7 +1077,7 @@ namespace MiniSAT
                             if (this.value(c[k]) != LiftedBool.Value.False)
                             {
                                 c[1] = c[k]; c[k] = false_lit;
-                                this.watches[index(~c[1])].Push(c);
+                                this.watches[(~c[1]).Index].Push(c);
                                 goto FoundWatch;
                             }
                         }
@@ -1259,7 +1187,7 @@ namespace MiniSAT
             }
 
 
-            Utils.Assert(this.decisionLevel() == 0);
+            Common.Assert(this.decisionLevel() == 0);
 
             if (this.propagate() != null)
             {
@@ -1277,8 +1205,8 @@ namespace MiniSAT
             for (int i = this.simpDB_assigns; i < this.nAssigns(); i++)
             {
                 Lit p = this.trail[i];
-                this.watches[index(p)].Clear();
-                this.watches[index(~p)].Clear();
+                this.watches[p.Index].Clear();
+                this.watches[(~p).Index].Clear();
             }
 
             // Remove satisfied clauses:
@@ -1329,7 +1257,7 @@ namespace MiniSAT
             }
 
 
-            Utils.Assert(this.root_level == this.decisionLevel());
+            Common.Assert(this.root_level == this.decisionLevel());
 
             this.stats.starts++;
             int conflictC = 0;
@@ -1358,7 +1286,7 @@ namespace MiniSAT
                     this.newClause(learnt_clause, true);
                     if (learnt_clause.Size() == 1)
                     {
-                        this.level[var(learnt_clause[0])] = 0;    // (this is ugly (but needed for 'analyzeFinal()') -- in future versions, we will backtrack past the 'root_level' and redo the assumptions)
+                        this.level[learnt_clause[0].Var] = 0;    // (this is ugly (but needed for 'analyzeFinal()') -- in future versions, we will backtrack past the 'root_level' and redo the assumptions)
                     }
 
 
@@ -1398,7 +1326,7 @@ namespace MiniSAT
                     this.stats.decisions++;
                     Lit next = this.order.select(parms.random_var_freq);
 
-                    if (next == lit_Undef)
+                    if (next == Lit.lit_Undef)
                     {
                         if (this.ModelFound())
                         {
@@ -1417,7 +1345,7 @@ namespace MiniSAT
                         return LiftedBool.Value.True;
                     }
 
-                    Utils.Check(this.assume(next));
+                    Common.Check(this.assume(next));
                 }
             }
         }
@@ -1483,10 +1411,10 @@ namespace MiniSAT
             for (int i = 0; i < assumps.Size(); i++)
             {
                 Lit p = assumps[i];
-                Utils.Assert(var(p) < this.nVars());
+                Common.Assert(p.Var < this.nVars());
                 if (!this.assume(p))
                 {
-                    Clause r = this.reason[var(p)];
+                    Clause r = this.reason[p.Var];
                     if (r != null)
                     {
                         this.analyzeFinal(r, true);
@@ -1506,13 +1434,13 @@ namespace MiniSAT
                     if (confl != null)
                     {
                         this.analyzeFinal(confl);
-                        Utils.Assert(this.conflict.Size() > 0);
+                        Common.Assert(this.conflict.Size() > 0);
                         this.cancelUntil(0);
                         return false;
                     }
                 }
             }
-            Utils.Assert(this.root_level == this.decisionLevel());
+            Common.Assert(this.root_level == this.decisionLevel());
 
             // Search:
             if (this.verbosity >= 1)
@@ -1625,8 +1553,8 @@ namespace MiniSAT
         private void MoveBack(Lit l1, Lit l2)
         {
 
-            int lev1 = this.level[var(l1)];
-            int lev2 = this.level[var(l2)];
+            int lev1 = this.level[l1.Var];
+            int lev2 = this.level[l2.Var];
             if (lev1 == -1)
             {
                 lev1 = int.MaxValue;
@@ -1694,7 +1622,7 @@ namespace MiniSAT
 
 
             this.root_level = 0;
-            Utils.Assert(this.root_level == this.decisionLevel());
+            Common.Assert(this.root_level == this.decisionLevel());
 
             while (LiftedBool.IsUndef(status))
             {

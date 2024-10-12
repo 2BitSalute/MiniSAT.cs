@@ -1,0 +1,12 @@
+[*.{cs,vb}]
+
+# IDE0003/IDE0009: Remove qualification
+dotnet_style_qualification_for_event = true
+dotnet_style_qualification_for_field = true
+dotnet_style_qualification_for_method = true
+dotnet_style_qualification_for_property = true
+
+# IDE0009: Add qualification
+dotnet_diagnostic.IDE0009.severity = error
+
+csharp_prefer_braces = true

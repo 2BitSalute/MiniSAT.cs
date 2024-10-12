@@ -1,4 +1,4 @@
-namespace MiniSatCS
+namespace MiniSAT
 {
     public static class LiftedBool
     {
@@ -19,13 +19,11 @@ namespace MiniSatCS
         }
 
         public const Value True = Value.True;
+
         public const Value False = Value.False;
 
-        public static Value From(bool v) { return v ? Value.True : Value.False; }
+        public static Value From(bool v) => v ? Value.True : Value.False;
 
-        public static bool IsUndef(Value l)
-        {
-            return l != Value.True && l != Value.False;
-        }
+        public static bool IsUndef(Value l) => l is not Value.True and not Value.False;
     }
 }

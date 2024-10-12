@@ -18,18 +18,22 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 **************************************************************************************************/
 
-using System;
-using System.IO;
-using System.Text;
-using System.Diagnostics;
-using System.Collections.Generic;
 
-// NOTE! Variables are just integers. No abstraction here. They should be chosen from 0..N,
-// so that they can be used as array indices.
-using Var = System.Int32;
 
-namespace MiniSatCS
+namespace MiniSAT
 {
+
+    using System;
+    using System.IO;
+    using System.Text;
+    using System.Diagnostics;
+    using System.Collections.Generic;
+
+    // NOTE! Variables are just integers. No abstraction here. They should be chosen from 0..N,
+    // so that they can be used as array indices.
+    using Var = System.Int32;
+    using MiniSAT.DataStructures;
+    using MiniSAT.Utils;
 
     public class Solver
     {
@@ -37,7 +41,7 @@ namespace MiniSatCS
         //=================================================================================================
         // Variables, literals, clause IDs:
 
-        const int var_Undef = -1;
+        private const int var_Undef = -1;
 
         public struct Lit
         {
@@ -100,22 +104,23 @@ namespace MiniSatCS
                                                                       //static  Lit  unsign(Lit p) { Lit q = new Lit(); q.x = p.x & ~1; return q; }
                                                                       //static  Lit  id    (Lit p, bool sgn) { Lit q; q.x = p.x ^ (sgn ? 1 : 0); return q; }
 
-        static public Lit lit_Undef = new Lit(var_Undef, false);  // \- Useful special constants.
-                                                                  //static Lit lit_Error = new Lit(var_Undef, true );  // /
+        static public Lit lit_Undef = new(var_Undef, false);  // \- Useful special constants.
+                                                              //static Lit lit_Error = new Lit(var_Undef, true );  // /
         #endregion
 
         #region Clauses
         //=================================================================================================
         // Clause -- a simple class for representing a clause:
 
-        const int ClauseId_null = int.MinValue;
+
+        private const int ClauseId_null = int.MinValue;
 
         //- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
         public class Clause
         {
-            Lit[] data;
-            bool is_learnt;
+            private Lit[] data;
+            private bool is_learnt;
             protected internal Clause(bool learnt, Vec<Lit> ps)
             {
                 this.is_learnt = learnt;
@@ -141,7 +146,7 @@ namespace MiniSatCS
 
             public override string ToString()
             {
-                StringBuilder sb = new StringBuilder();
+                StringBuilder sb = new();
                 sb.Append("[");
                 foreach (Lit l in this.data)
                 {
@@ -164,50 +169,19 @@ namespace MiniSatCS
         #endregion
 
         #region Utilities
-        //=================================================================================================
-        // Random numbers:
-
-        // Returns a random float 0 <= x < 1. Seed must never be 0.
-        static double drand(ref double seed)
-        {
-            seed *= 1389796;
-            int q = (int)(seed / 2147483647);
-            seed -= (double)q * 2147483647;
-            return seed / 2147483647;
-        }
-
-        // Returns a random integer 0 <= x < size. Seed must never be 0.
-        static int irand(ref double seed, int size)
-        {
-            return (int)(drand(ref seed) * size);
-        }
 
         //=================================================================================================
         // Time and Memory:
 
-        static double cpuTime()
+        private static double cpuTime()
         {
             return (double)Stopwatch.GetTimestamp() / Stopwatch.Frequency;
         }
 
-        static long memUsed()
+        private static long memUsed()
         {
             return GC.GetTotalMemory(false);
         }
-
-        [Conditional("DEBUG")]
-        static public void assert(bool expr)
-        {
-            if (!expr)
-            {
-
-                throw new Exception("assertion violated");
-            }
-
-        }
-
-        // Just like 'assert()' but expression will be evaluated in the release version as well.
-        static void check(bool expr) { assert(expr); }
 
         // Redfine if you want output to go somewhere else:
         public static void reportf(string format, params object[] args)
@@ -241,128 +215,48 @@ namespace MiniSatCS
         }
         #endregion
 
-        #region VarOrder
-        public class VarOrder
-        {
-            readonly protected Vec<LiftedBool.Value> assigns;     // var.val. Pointer to external assignment table.
-            readonly protected Vec<double> activity;    // var.act. Pointer to external activity table.
-            protected Heap heap;
-            double random_seed; // For the internal random number generator
-
-            public VarOrder(Vec<LiftedBool.Value> ass, Vec<double> act)
-            {
-                this.assigns = ass;
-                this.activity = act;
-                this.heap = new Heap(this.var_lt);
-                this.random_seed = 91648253;
-            }
-
-            bool var_lt(Var x, Var y) { return this.activity[x] > this.activity[y]; }
-
-            public virtual void newVar()
-            {
-                this.heap.setBounds(this.assigns.Size());
-                this.heap.insert(this.assigns.Size() - 1);
-            }
-
-            // Called when variable increased in activity.
-            public virtual void update(Var x)
-            {
-                if (this.heap.inHeap(x))
-                {
-                    this.heap.increase(x);
-                }
-
-            }
-
-            // Called when variable is unassigned and may be selected again.
-            public virtual void undo(Var x)
-            {
-                if (!this.heap.inHeap(x))
-                {
-                    this.heap.insert(x);
-                }
-
-            }
-
-            public Lit select()
-            {
-                return this.select(0.0);
-            }
-
-            // Selects a new, unassigned variable (or 'var_Undef' if none exists).
-            public virtual Lit select(double random_var_freq)
-            {
-                // Random decision:
-                if (drand(ref this.random_seed) < random_var_freq && !this.heap.empty())
-                {
-                    Var next = irand(ref this.random_seed, this.assigns.Size());
-                    if (LiftedBool.IsUndef(this.assigns[next]))
-                    {
-
-                        return ~new Lit(next);
-                    }
-
-                }
-
-                // Activity based decision:
-                while (!this.heap.empty())
-                {
-                    Var next = this.heap.getmin();
-                    if (LiftedBool.IsUndef(this.assigns[next]))
-                    {
-
-                        return ~new Lit(next);
-                    }
-
-                }
-
-                return lit_Undef;
-            }
-        }
-        #endregion
-
         #region Solver state
-        bool ok;               // If FALSE, the constraints are already unsatisfiable. No part of the solver state may be used!
+        private bool ok;               // If FALSE, the constraints are already unsatisfiable. No part of the solver state may be used!
         protected Vec<Clause> clauses;          // List of problem clauses.
         protected Vec<Clause> learnts;          // List of learnt clauses.
-        double cla_inc;          // Amount to bump next clause with.
-        double cla_decay;        // INVERSE decay factor for clause activity: stores 1/decay.
+        private double cla_inc;          // Amount to bump next clause with.
+        private double cla_decay;        // INVERSE decay factor for clause activity: stores 1/decay.
 
         public Vec<double> activity;         // A heuristic measurement of the activity of a variable.
-        double var_inc;          // Amount to bump next variable with.
-        double var_decay;        // INVERSE decay factor for variable activity: stores 1/decay. Use negative value for static variable order.
-        VarOrder order;            // Keeps track of the decision variable order.
+        private double var_inc;          // Amount to bump next variable with.
+        private double var_decay;        // INVERSE decay factor for variable activity: stores 1/decay. Use negative value for static variable order.
+        private VarOrder order;            // Keeps track of the decision variable order.
 
-        Vec<Vec<Clause>> watches;          // 'watches[lit]' is a list of constraints watching 'lit' (will go there if literal becomes true).
+        private Vec<Vec<Clause>> watches;          // 'watches[lit]' is a list of constraints watching 'lit' (will go there if literal becomes true).
         public Vec<LiftedBool.Value> assigns;          // The current assignments.
         public Vec<Lit> trail;            // Assignment stack; stores all assigments made in the order they were made.
         protected Vec<int> trail_lim;        // Separator indices for different decision levels in 'trail'.
         protected Vec<Clause> reason;           // 'reason[var]' is the clause that implied the variables current value, or 'null' if none.
         protected Vec<int> level;            // 'level[var]' is the decision level at which assignment was made.
-        Vec<int> trail_pos;        // 'trail_pos[var]' is the variable's position in 'trail[]'. This supersedes 'level[]' in some sense, and 'level[]' will probably be removed in future releases.
-        int root_level;       // Level of first proper decision.
-        int qhead;            // Head of queue (as index into the trail -- no more explicit propagation queue in MiniSat).
-        int simpDB_assigns;   // Number of top-level assignments since last execution of 'simplifyDB()'.
-        long simpDB_props;     // Remaining number of propagations that must be made before next execution of 'simplifyDB()'.
+        private Vec<int> trail_pos;        // 'trail_pos[var]' is the variable's position in 'trail[]'. This supersedes 'level[]' in some sense, and 'level[]' will probably be removed in future releases.
+        private int root_level;       // Level of first proper decision.
+        private int qhead;            // Head of queue (as index into the trail -- no more explicit propagation queue in MiniSat).
+        private int simpDB_assigns;   // Number of top-level assignments since last execution of 'simplifyDB()'.
+        private long simpDB_props;     // Remaining number of propagations that must be made before next execution of 'simplifyDB()'.
 
         // Temporaries (to reduce allocation overhead). Each variable is prefixed by the method in which is used:
         //
-        Vec<LiftedBool.Value> analyze_seen;
-        Vec<Lit> analyze_stack;
-        Vec<Lit> analyze_toclear;
-        Vec<Lit> addUnit_tmp;
-        Vec<Lit> addBinary_tmp;
-        Vec<Lit> addTernary_tmp;
+        private Vec<LiftedBool.Value> analyze_seen;
+        private Vec<Lit> analyze_stack;
+        private Vec<Lit> analyze_toclear;
+        private Vec<Lit> addUnit_tmp;
+        private Vec<Lit> addBinary_tmp;
+        private Vec<Lit> addTernary_tmp;
         #endregion
 
         #region Main internal methods:
-        void analyzeFinal(Clause confl) { this.analyzeFinal(confl, false); }
-        bool enqueue(Lit fact) { return this.enqueue(fact, null); }
+        private void analyzeFinal(Clause confl) { this.analyzeFinal(confl, false); }
+
+        private bool enqueue(Lit fact) { return this.enqueue(fact, null); }
 
         // Activity:
         //
-        void varBumpActivity(Lit p)
+        private void varBumpActivity(Lit p)
         {
             if (this.var_decay < 0)
             {
@@ -378,19 +272,22 @@ namespace MiniSatCS
 
             this.order.update(var(p));
         }
-        void varDecayActivity()
+
+        private void varDecayActivity()
         {
             if (this.var_decay >= 0)
             {
                 this.var_inc *= this.var_decay;
             }
         }
-        void claDecayActivity() { this.cla_inc *= this.cla_decay; }
+
+        private void claDecayActivity() { this.cla_inc *= this.cla_decay; }
 
         // Operations on clauses:
         //
-        void newClause(Vec<Lit> ps) { this.newClause(ps, false); }
-        void claBumpActivity(Clause c)
+        private void newClause(Vec<Lit> ps) { this.newClause(ps, false); }
+
+        private void claBumpActivity(Clause c)
         {
             if ((c.activity += (float)this.cla_inc) > 1e20)
             {
@@ -400,7 +297,7 @@ namespace MiniSatCS
         protected void remove(Clause c) { this.remove(c, false); }
         protected bool locked(Clause c) { return c == this.reason[var(c[0])]; }
 
-        int decisionLevel() { return this.trail_lim.Size(); }
+        private int decisionLevel() { return this.trail_lim.Size(); }
         #endregion
 
         #region Public interface
@@ -444,14 +341,14 @@ namespace MiniSatCS
             this.verbosity = 0;
             this.progress_estimate = 0;
 
-            Vec<Lit> dummy = new Vec<Lit>(2, lit_Undef);
+            Vec<Lit> dummy = new(2, lit_Undef);
             dummy.Pop();
 
         }
 
         protected virtual VarOrder createOrder()
         {
-            return new VarOrder(this.assigns, this.activity);
+            return new VarOrder(this.assigns, this.activity, this.);
         }
 
         ~Solver()
@@ -503,7 +400,7 @@ namespace MiniSatCS
         public bool okay() { return this.ok; }       // FALSE means solver is in an conflicting state (must never be used again!)
                                                      //public void    simplifyDB();
                                                      //public bool    solve(vec<Lit> assumps);
-        public bool solve() { Vec<Lit> tmp = new Vec<Lit>(); return this.solve(tmp); }
+        public bool solve() { Vec<Lit> tmp = new(); return this.solve(tmp); }
 
         public double progress_estimate;  // Set by 'search()'.
         public Vec<LiftedBool.Value> model;              // If problem is satisfiable, this vector contains the model (if any).
@@ -529,7 +426,7 @@ namespace MiniSatCS
         |  Effect:
         |    Activity heuristics are updated.
         |________________________________________________________________________________________________@*/
-        Vec<Lit> BasicClauseSimplification(Vec<Lit> ps, bool copy)
+        private Vec<Lit> BasicClauseSimplification(Vec<Lit> ps, bool copy)
         {
             Vec<Lit> qs;
             if (copy)
@@ -542,7 +439,7 @@ namespace MiniSatCS
                 qs = ps;
             }
 
-            Dictionary<Var, Lit> dict = new Dictionary<Var, Lit>(ps.Size());
+            Dictionary<Var, Lit> dict = new(ps.Size());
             int ptr = 0;
 
             for (int i = 0; i < qs.Size(); i++)
@@ -570,7 +467,7 @@ namespace MiniSatCS
             return qs;
         }
 
-        void reorderByLevel(Vec<Lit> ps)
+        private void reorderByLevel(Vec<Lit> ps)
         {
             int max = int.MinValue;
             int max_at = -1;
@@ -643,11 +540,11 @@ namespace MiniSatCS
 
             Vec<Lit> ps;
 
-            assert(!(learnt && theoryClause));
+            Utils.Assert(!(learnt && theoryClause));
 
             if (!learnt)
             {
-                assert(theoryClause || this.decisionLevel() == 0);
+                Utils.Assert(theoryClause || this.decisionLevel() == 0);
 
                 Vec<Lit> qs = this.BasicClauseSimplification(ps_, copy);
 
@@ -754,7 +651,7 @@ namespace MiniSatCS
                         c[1] = ps[max_i];
                         c[max_i] = ps[1];
 
-                        check(this.enqueue(c[0], c));
+                        Utils.Check(this.enqueue(c[0], c));
                     }
                     else
                     {
@@ -778,7 +675,7 @@ namespace MiniSatCS
 
         // Disposes a clauses and removes it from watcher lists. NOTE! Low-level; does NOT change the 'clauses' and 'learnts' vector.
         //
-        void remove(Clause c, bool just_dealloc)
+        private void remove(Clause c, bool just_dealloc)
         {
             if (!just_dealloc)
             {
@@ -804,9 +701,9 @@ namespace MiniSatCS
         // the clause is binary and satisfied, in which case the first literal is true)
         // Returns True if clause is satisfied (will be removed), False otherwise.
         //
-        bool simplify(Clause c)
+        private bool simplify(Clause c)
         {
-            assert(this.decisionLevel() == 0);
+            Utils.Assert(this.decisionLevel() == 0);
             for (int i = 0; i < c.size(); i++)
             {
                 if (this.value(c[i]) == LiftedBool.Value.True)
@@ -821,7 +718,7 @@ namespace MiniSatCS
         #endregion
 
         #region Minor methods
-        static bool removeWatch(Vec<Clause> ws, Clause elem)    // Pre-condition: 'elem' must exists in 'ws' OR 'ws' must be empty.
+        private static bool removeWatch(Vec<Clause> ws, Clause elem)    // Pre-condition: 'elem' must exists in 'ws' OR 'ws' must be empty.
         {
             if (ws.Size() == 0)
             {
@@ -832,7 +729,7 @@ namespace MiniSatCS
             int j = 0;
             for (; ws[j] != elem; j++)
             {
-                assert(j < ws.Size() - 1);
+                Utils.Assert(j < ws.Size() - 1);
             }
 
 
@@ -866,7 +763,7 @@ namespace MiniSatCS
 
 
         // Returns FALSE if immediate conflict.
-        bool assume(Lit p)
+        private bool assume(Lit p)
         {
             this.trail_lim.Push(this.trail.Size());
             return this.enqueue(p);
@@ -911,7 +808,7 @@ namespace MiniSatCS
         |  Effect:
         |    Will undo part of the trail, upto but not beyond the assumption of the current decision level.
         |________________________________________________________________________________________________@*/
-        void analyze(Clause confl, Vec<Lit> out_learnt, out int out_btlevel)
+        private void analyze(Clause confl, Vec<Lit> out_learnt, out int out_btlevel)
         {
             Vec<LiftedBool.Value> seen = this.analyze_seen;
             int pathC = 0;
@@ -935,7 +832,7 @@ namespace MiniSatCS
                         debug("   {0} {1} {2} {3}\n", trail[i], seen[var(trail[i])], 
                                 level[var(trail[i])], reason[var(trail[i])]);
                     } */
-                assert(confl != null);          // (otherwise should be UIP)
+                Utils.Assert(confl != null);          // (otherwise should be UIP)
 
                 Clause c = confl;
 
@@ -1065,14 +962,14 @@ namespace MiniSatCS
 
         // Check if 'p' can be removed. 'min_level' is used to abort early if visiting literals at a level that cannot be removed.
         //
-        bool analyze_removable(Lit p_, uint min_level)
+        private bool analyze_removable(Lit p_, uint min_level)
         {
-            assert(this.reason[var(p_)] != null);
+            Utils.Assert(this.reason[var(p_)] != null);
             this.analyze_stack.Clear(); this.analyze_stack.Push(p_);
             int top = this.analyze_toclear.Size();
             while (this.analyze_stack.Size() > 0)
             {
-                assert(this.reason[var(this.analyze_stack.Last())] != null);
+                Utils.Assert(this.reason[var(this.analyze_stack.Last())] != null);
                 Clause c = this.reason[var(this.analyze_stack.Last())];
                 this.analyze_stack.Pop();
                 for (int i = 1; i < c.size(); i++)
@@ -1117,7 +1014,7 @@ namespace MiniSatCS
         |    making assumptions). If 'skip_first' is TRUE, the first literal of 'confl' is  ignored (needed
         |    if conflict arose before search even started).
         |________________________________________________________________________________________________@*/
-        void analyzeFinal(Clause confl, bool skip_first)
+        private void analyzeFinal(Clause confl, bool skip_first)
         {
             // -- NOTE! This code is relatively untested. Please report bugs!
             this.conflict.Clear();
@@ -1146,7 +1043,7 @@ namespace MiniSatCS
                     Clause r = this.reason[x];
                     if (r == null)
                     {
-                        assert(this.level[x] > 0);
+                        Utils.Assert(this.level[x] > 0);
                         this.conflict.Push(~this.trail[i]);
                     }
                     else
@@ -1183,7 +1080,7 @@ namespace MiniSatCS
         |  Output:
         |    TRUE if fact was enqueued without conflict, FALSE otherwise.
         |________________________________________________________________________________________________@*/
-        bool enqueue(Lit p, Clause from)
+        private bool enqueue(Lit p, Clause from)
         {
             if (!LiftedBool.IsUndef(this.value(p)))
             {
@@ -1213,7 +1110,7 @@ namespace MiniSatCS
         |    Post-conditions:
         |      * the propagation queue is empty, even if there was a conflict.
         |________________________________________________________________________________________________@*/
-        Clause propagate()
+        private Clause propagate()
         {
             Clause confl = null;
             while (this.qhead < this.trail.Size())
@@ -1234,7 +1131,7 @@ namespace MiniSatCS
                     if (c[0] == false_lit)
                     { c[0] = c[1]; c[1] = false_lit; }
 
-                    assert(c[1] == false_lit);
+                    Utils.Assert(c[1] == false_lit);
 
                     // If 0th watch is true, then clause is already satisfied.
                     Lit first = c[0];
@@ -1295,7 +1192,7 @@ namespace MiniSatCS
         |    Remove half of the learnt clauses, minus the clauses locked by the current assignment. Locked
         |    clauses are clauses that are reason to some assignment. Binary clauses are never removed.
         |________________________________________________________________________________________________@*/
-        class reduceDB_lt : IComparer<Clause>
+        private class reduceDB_lt : IComparer<Clause>
         {
             public int Compare(Clause x, Clause y)
             {
@@ -1312,7 +1209,7 @@ namespace MiniSatCS
             }
         }
 
-        void reduceDB()
+        private void reduceDB()
         {
             int i, j;
             double extra_lim = this.cla_inc / this.learnts.Size();    // Remove any clause below this activity
@@ -1354,7 +1251,7 @@ namespace MiniSatCS
         |    Simplify the clause database according to the current top-level assigment. Currently, the only
         |    thing done here is the removal of satisfied clauses, but more things can be put here.
         |________________________________________________________________________________________________@*/
-        void simplifyDB()
+        private void simplifyDB()
         {
             if (!this.ok)
             {
@@ -1362,7 +1259,7 @@ namespace MiniSatCS
             }
 
 
-            assert(this.decisionLevel() == 0);
+            Utils.Assert(this.decisionLevel() == 0);
 
             if (this.propagate() != null)
             {
@@ -1424,7 +1321,7 @@ namespace MiniSatCS
         |    all variables are decision variables, this means that the clause set is satisfiable. 'LiftedBool.Value.False'
         |    if the clause set is unsatisfiable. 'l_Undef' if the bound on number of conflicts is reached.
         |________________________________________________________________________________________________@*/
-        LiftedBool.Value search(int nof_conflicts, int nof_learnts, SearchParams parms)
+        private LiftedBool.Value search(int nof_conflicts, int nof_learnts, SearchParams parms)
         {
             if (!this.ok)
             {
@@ -1432,7 +1329,7 @@ namespace MiniSatCS
             }
 
 
-            assert(this.root_level == this.decisionLevel());
+            Utils.Assert(this.root_level == this.decisionLevel());
 
             this.stats.starts++;
             int conflictC = 0;
@@ -1448,7 +1345,7 @@ namespace MiniSatCS
                     // CONFLICT
 
                     this.stats.conflicts++; conflictC++;
-                    Vec<Lit> learnt_clause = new Vec<Lit>();
+                    Vec<Lit> learnt_clause = new();
                     int backtrack_level;
                     if (this.decisionLevel() == this.root_level)
                     {
@@ -1520,7 +1417,7 @@ namespace MiniSatCS
                         return LiftedBool.Value.True;
                     }
 
-                    check(this.assume(next));
+                    Utils.Check(this.assume(next));
                 }
             }
         }
@@ -1528,7 +1425,7 @@ namespace MiniSatCS
 
         // Divide all variable activities by 1e100.
         //
-        void varRescaleActivity()
+        private void varRescaleActivity()
         {
             for (int i = 0; i < this.nVars(); i++)
             {
@@ -1542,7 +1439,7 @@ namespace MiniSatCS
 
         // Divide all constraint activities by 1e20.
         //
-        void claRescaleActivity()
+        private void claRescaleActivity()
         {
             for (int i = 0; i < this.learnts.Size(); i++)
             {
@@ -1567,7 +1464,7 @@ namespace MiniSatCS
         |    A list of assumptions (unit clauses coded as literals). Pre-condition: The assumptions must
         |    not contain both 'x' and '~x' for any variable 'x'.
         |________________________________________________________________________________________________@*/
-        bool solve(Vec<Lit> assumps)
+        private bool solve(Vec<Lit> assumps)
         {
             this.simplifyDB();
             if (!this.ok)
@@ -1576,7 +1473,7 @@ namespace MiniSatCS
             }
 
 
-            SearchParams parms = new SearchParams(this.default_parms);
+            SearchParams parms = new(this.default_parms);
             double nof_conflicts = 100;
             double nof_learnts = this.nClauses() / 3;
             LiftedBool.Value status = LiftedBool.Value.Undef0;
@@ -1586,7 +1483,7 @@ namespace MiniSatCS
             for (int i = 0; i < assumps.Size(); i++)
             {
                 Lit p = assumps[i];
-                assert(var(p) < this.nVars());
+                Utils.Assert(var(p) < this.nVars());
                 if (!this.assume(p))
                 {
                     Clause r = this.reason[var(p)];
@@ -1609,13 +1506,13 @@ namespace MiniSatCS
                     if (confl != null)
                     {
                         this.analyzeFinal(confl);
-                        assert(this.conflict.Size() > 0);
+                        Utils.Assert(this.conflict.Size() > 0);
                         this.cancelUntil(0);
                         return false;
                     }
                 }
             }
-            assert(this.root_level == this.decisionLevel());
+            Utils.Assert(this.root_level == this.decisionLevel());
 
             // Search:
             if (this.verbosity >= 1)
@@ -1653,11 +1550,11 @@ namespace MiniSatCS
         #endregion
 
         #region Stats
-        double start_time = cpuTime();
+        private double start_time = cpuTime();
 
         // Return search-space coverage. Not extremely reliable.
         //
-        double progressEstimate()
+        private double progressEstimate()
         {
             double progress = 0;
             double F = 1.0 / this.nVars();
@@ -1701,9 +1598,9 @@ namespace MiniSatCS
         {
         }
 
-        int levelToBacktrack;
+        private int levelToBacktrack;
 
-        bool ModelFound()
+        private bool ModelFound()
         {
             this.levelToBacktrack = int.MaxValue;
 
@@ -1725,7 +1622,7 @@ namespace MiniSatCS
             return res;
         }
 
-        void MoveBack(Lit l1, Lit l2)
+        private void MoveBack(Lit l1, Lit l2)
         {
 
             int lev1 = this.level[var(l1)];
@@ -1786,7 +1683,7 @@ namespace MiniSatCS
 
         public bool SearchNoRestarts()
         {
-            SearchParams parms = new SearchParams(this.default_parms);
+            SearchParams parms = new(this.default_parms);
             LiftedBool.Value status = LiftedBool.Value.Undef0;
 
             this.simplifyDB();
@@ -1797,7 +1694,7 @@ namespace MiniSatCS
 
 
             this.root_level = 0;
-            assert(this.root_level == this.decisionLevel());
+            Utils.Assert(this.root_level == this.decisionLevel());
 
             while (LiftedBool.IsUndef(status))
             {

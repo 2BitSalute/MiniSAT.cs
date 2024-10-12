@@ -1,14 +1,16 @@
-namespace MiniSatCS
+namespace MiniSAT.DataStructures
 {
     using System;
     using System.Collections.Generic;
+
+    using MiniSAT.Utils;
 
     /// <summary>
     /// 'vec' -- automatically resizable arrays (via 'push()' method)
     /// Can also be shrunk!
     /// </summary>
     /// <typeparam name="T"></typeparam>
-    public class Vec<T>
+    public class Vec<T> : IStack<T>
     {
         private T[] data;
 
@@ -24,13 +26,13 @@ namespace MiniSatCS
 
             if (cap == 0)
             {
-                cap = (min_cap >= 2) ? min_cap : 2;
+                cap = min_cap >= 2 ? min_cap : 2;
             }
             else
             {
                 do
                 {
-                    cap = (cap * 3 + 1) >> 1;
+                    cap = cap * 3 + 1 >> 1;
                 }
                 while (cap < min_cap);
             }
@@ -38,13 +40,16 @@ namespace MiniSatCS
             Array.Resize(ref this.data, cap);
         }
 
-        // Constructors:
         public Vec() { }
 
         public Vec(int size) { this.GrowTo(size); }
 
         public Vec(int size, T pad) { this.GrowTo(size, pad); }
-        // (takes ownership of array)
+
+        /// <summary>
+        /// Takes ownership of array
+        /// </summary>
+        /// <param name="array">The array to initialize with</param>
         public Vec(T[] array)
         {
             this.data = array;
@@ -52,12 +57,12 @@ namespace MiniSatCS
         }
 
         // Size operations:
-        public int Size() { return this.size; }
+        public int Size() => this.size;
 
         public void Shrink(int nelems)
         {
-            Solver.assert(nelems <= this.size);
-            Solver.assert(nelems >= 0);
+            Utils.Assert(nelems <= this.size);
+            Utils.Assert(nelems >= 0);
             this.size -= nelems;
         }
         public void ShrinkTo(int nelems)
@@ -65,7 +70,11 @@ namespace MiniSatCS
             this.Shrink(this.Size() - nelems);
         }
 
-        public void Pop() { Solver.assert(this.size > 0); this.size--; }
+        public void Pop()
+        {
+            Utils.Assert(this.size > 0);
+            this.size--;
+        }
 
         public void GrowTo(int size)
         {
@@ -75,11 +84,12 @@ namespace MiniSatCS
 
         public void GrowTo(int size, T pad)
         {
-            int i = this.size;
+            int originalSize = this.size;
 
+            // This changes this.size
             this.GrowTo(size);
 
-            for (; i < this.size; ++i)
+            for (int i = originalSize; i < this.size; ++i)
             {
                 this.data[i] = pad;
             }
@@ -90,11 +100,18 @@ namespace MiniSatCS
             this.size = 0;
         }
 
-        public void Capacity(int size) { this.Grow(size); }
+        // IStack.Push
+        public void Push(T elem)
+        {
+            if (this.data == null || this.size == this.data.Length)
+            {
+                this.Grow(this.size + 1);
+            }
 
-        // Stack interface:
-        public void Push(T elem) { if (this.data == null || this.size == this.data.Length) { this.Grow(this.size + 1); } this.data[this.size++] = elem; }
+            this.data[this.size++] = elem;
+        }
 
+        // IStack.Last
         public T Last() { return this.data[this.size - 1]; }
 
         // Vector interface:
@@ -102,13 +119,13 @@ namespace MiniSatCS
         {
             get
             {
-                Solver.assert(index < this.size);
+                Utils.Assert(index < this.size);
                 return this.data[index];
             }
 
             set
             {
-                Solver.assert(index < this.size);
+                Utils.Assert(index < this.size);
                 this.data[index] = value;
             }
         }
@@ -147,7 +164,7 @@ namespace MiniSatCS
 
         public void Swap(int i, int j)
         {
-            Solver.assert(i < this.size && j < this.size);
+            Utils.Assert(i < this.size && j < this.size);
 
             (this.data[j], this.data[i]) = (this.data[i], this.data[j]);
         }

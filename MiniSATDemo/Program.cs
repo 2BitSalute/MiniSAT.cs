@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Collections.Generic;
 
 using MiniSatCS;
+using MiniSAT.DataStructures;
 
 internal class Program
 {

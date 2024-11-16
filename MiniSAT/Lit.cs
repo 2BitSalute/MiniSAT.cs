@@ -61,13 +61,11 @@ namespace MiniSAT
                 return false;
             }
 
-
             if (other is Lit)
             {
 
                 return (Lit)other == this;
             }
-
 
             return false;
         }

@@ -37,7 +37,6 @@ namespace MiniSAT
             {
                 this.heap.Increase(x);
             }
-
         }
 
         // Called when variable is unassigned and may be selected again.
@@ -47,7 +46,6 @@ namespace MiniSAT
             {
                 this.heap.Insert(x);
             }
-
         }
 
         public Lit select()
@@ -67,7 +65,6 @@ namespace MiniSAT
 
                     return ~new Lit(next);
                 }
-
             }
 
             // Activity based decision:
@@ -79,7 +76,6 @@ namespace MiniSAT
 
                     return ~new Lit(next);
                 }
-
             }
 
             return Lit.lit_Undef;

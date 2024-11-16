@@ -75,7 +75,6 @@ public class Program
         bool expect = false;
         bool expect_res = false;
 
-
         int pos = 0;
         if (args[pos] == "-s")
         {
@@ -83,6 +82,7 @@ public class Program
             expect_res = true;
             pos++;
         }
+
         if (args[pos] == "-u")
         {
             expect = true;
@@ -95,9 +95,9 @@ public class Program
             StreamReader sr = File.OpenText(args[pos]);
             Vec<Lit> lits = new();
 
-            Solver S = new();
+            Solver solver = new();
 
-            for (; ; )
+            while (true)
             {
                 lits.Clear();
                 string w;
@@ -108,7 +108,6 @@ public class Program
                         break;
                     }
 
-
                     int parsed_lit = int.Parse(w);
                     if (parsed_lit == 0)
                     {
@@ -116,11 +115,10 @@ public class Program
                     }
 
                     int var = Math.Abs(parsed_lit) - 1;
-                    while (var >= S.nVars())
+                    while (var >= solver.nVars())
                     {
-                        S.newVar();
+                        solver.newVar();
                     }
-
 
                     lits.Push((parsed_lit > 0) ? new Lit(var) : ~new Lit(var));
                 }
@@ -129,15 +127,14 @@ public class Program
                     break;
                 }
 
-
-                S.addClause(lits);
+                solver.addClause(lits);
             }
 
             if (expect)
             {
-                S.verbosity = 0;
-                S.solve();
-                if (S.okay() == expect_res)
+                solver.verbosity = 0;
+                solver.solve();
+                if (solver.okay() == expect_res)
                 {
                     Solver.reportf(".");
                 }
@@ -149,10 +146,10 @@ public class Program
             }
             else
             {
-                S.verbosity = 1;
-                S.solve();
-                Solver.reportf(S.okay() ? "SATISFIABLE\n" : "UNSATISFIABLE\n");
-                S.printStats();
+                solver.verbosity = 1;
+                solver.solve();
+                Solver.reportf(solver.okay() ? "SATISFIABLE\n" : "UNSATISFIABLE\n");
+                solver.printStats();
             }
 
 #if false
